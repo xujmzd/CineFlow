@@ -3,6 +3,7 @@
 基于 **Electron + React + Tailwind CSS** 的多项目媒体管理工具，用于集中管理视频、图片、音频等素材，并支持跨项目复用、拖拽导出。
 
 ---
+百度网盘链接：https://pan.baidu.com/s/1zdxRNeYKSp5u1x3PTb-ggQ?pwd=dpx7 
 
 ## 一、总体功能概览
 
@@ -323,4 +324,5 @@ npm run build
   - 在 `project.json` 中增加字段。
   - 在主进程封装对应的读写函数。
   - 最后通过 `electronAPI` 暴露给前端。
+
 
