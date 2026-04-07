@@ -14,7 +14,8 @@ const CONFIG_PATH = path.join(userData, 'cineflow-settings.json');
 let settings = {
   projectRoot: null,
   mediaRoot: null,
-  currentProject: 'default',
+  // 移除默认占用的占位项目名
+  currentProject: null,
   initialized: false,
 };
 
@@ -33,6 +34,8 @@ async function loadSettings() {
       projectRoot: settings.projectRoot || path.join(userData, 'projects'),
       mediaRoot: settings.mediaRoot || path.join(userData, 'media-library'),
       initialized: false,
+      // 不再给出默认当前项目，避免占用一个实际的项目目录
+      currentProject: null,
     };
   }
   return settings;
@@ -52,33 +55,44 @@ function getMediaRoot() {
 }
 
 function getProjectDir() {
-  const projectName = settings.currentProject || 'default';
+  const projectName = settings.currentProject;
+  if (!projectName) return null;
   return path.join(getProjectRoot(), projectName);
 }
 
 function getProjectMetaPath() {
-  return path.join(getProjectDir(), 'project.json');
+  const dir = getProjectDir();
+  if (!dir) return null;
+  return path.join(dir, 'project.json');
 }
 
 async function ensureDirs() {
   await loadSettings();
   await fsp.mkdir(getProjectRoot(), { recursive: true });
   await fsp.mkdir(getMediaRoot(), { recursive: true });
-  await fsp.mkdir(getProjectDir(), { recursive: true });
+  // 仅在存在当前项目时创建该项目目录
+  const projDir = getProjectDir();
+  if (projDir) {
+    await fsp.mkdir(projDir, { recursive: true });
+  }
 }
 
 async function readProjectMeta() {
   const metaPath = getProjectMetaPath();
+  if (!metaPath) {
+    return { name: settings.currentProject || '', mediaLinks: [] };
+  }
   try {
     const raw = await fsp.readFile(metaPath, 'utf-8');
     return JSON.parse(raw);
   } catch {
-    return { name: settings.currentProject || 'default', mediaLinks: [] };
+    return { name: settings.currentProject || '', mediaLinks: [] };
   }
 }
 
 async function writeProjectMeta(meta) {
   const metaPath = getProjectMetaPath();
+  if (!metaPath) return;
   await fsp.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
 }
 
@@ -97,6 +111,9 @@ async function listMediaLibrary() {
 async function listProjectFiles() {
   await ensureDirs();
   const dir = getProjectDir();
+  if (!dir) {
+    return { files: [], mediaLinks: [] };
+  }
   let files = [];
   try {
     const entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -141,14 +158,15 @@ async function copyWithUniqueName(srcPath, destDir) {
   return target;
 }
 
-// 左侧上传：复制到当前项目目录（保留原文件名，冲突时加后缀）
+// 左侧上传：复制到当前项目目录（保留原文件名，冲突时加后缀，遇到同名时弹出覆盖确认）
 async function importFilesToProject(filePaths) {
   await ensureDirs();
   const projectDir = getProjectDir();
+  if (!projectDir) return [];
   const imported = [];
   for (const src of filePaths) {
-    const target = await copyWithUniqueName(src, projectDir);
-    imported.push({ name: path.basename(target), fullPath: target });
+    const target = await copyWithConflict(src, projectDir) || await copyWithUniqueName(src, projectDir);
+    if (target) imported.push({ name: path.basename(target), fullPath: target });
   }
   return imported;
 }
@@ -172,8 +190,21 @@ async function importFilesToLibrary(filePaths) {
       target = path.join(mediaRoot, candidateBase);
       try {
         await fsp.access(target);
-        candidateBase = `${baseName}-${index}${ext}`;
-        index += 1;
+        // 同名文件存在，询问是否覆盖
+        const result = dialog.showMessageBoxSync(BrowserWindow.getFocusedWindow(), {
+          type: 'question',
+          buttons: ['Overwrite', 'Skip'],
+          defaultId: 0,
+          message: `媒体库中已存在同名文件 ${path.basename(target)}，是否覆盖？`,
+        });
+        if (result === 0) {
+          await fsp.copyFile(src, target);
+          break;
+        } else {
+          candidateBase = `${baseName}-${index}${ext}`;
+          index += 1;
+          continue;
+        }
       } catch {
         await fsp.copyFile(src, target);
         break;
@@ -202,6 +233,8 @@ async function listProjects() {
   const projects = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    // 移除占用的默认占位目录名，确保不会作为实际项目显示
+    if (entry.name === 'default') continue;
     const projectPath = path.join(root, entry.name);
     let stat;
     try {
@@ -217,8 +250,40 @@ async function listProjects() {
     });
   }
 
-  projects.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  // 按修改时间降序排序，处理可能的 undefined 值
+  projects.sort((a, b) => {
+    const ma = a.mtimeMs ?? 0;
+    const mb = b.mtimeMs ?? 0;
+    return mb - ma;
+  });
   return projects;
+}
+
+// Copy with optional conflict checking for duplicates in destination
+// If a file with the same name exists, prompt the user to overwrite or skip
+async function copyWithConflict(srcPath, destDir) {
+  await fsp.mkdir(destDir, { recursive: true });
+  const base = path.basename(srcPath);
+  const target = path.join(destDir, base);
+  try {
+    await fsp.access(target);
+    // 存在同名文件，弹出覆盖/跳过的对话框
+    const result = dialog.showMessageBoxSync(BrowserWindow.getFocusedWindow(), {
+      type: 'question',
+      buttons: ['Overwrite', 'Skip'],
+      defaultId: 0,
+      message: `文件 ${base} 已存在于当前项目中，是否覆盖？`,
+    });
+    if (result === 0) {
+      await fsp.copyFile(srcPath, target);
+      return target;
+    }
+    return null;
+  } catch {
+    // 不存在同名文件，直接复制
+    await fsp.copyFile(srcPath, target);
+    return target;
+  }
 }
 
 // 创建新项目：使用 YYYYMMDD_项目名 作为目录名，meta 中保存原始项目名
@@ -445,7 +510,10 @@ async function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    icon: path.join(__dirname, 'assets/icon.ico'), // Windows 优先
+    // macOS 使用 .icns 图标，Windows 使用 .ico；保持跨平台兼容
+    icon: process.platform === 'darwin'
+      ? path.join(__dirname, 'assets/icon.icns')
+      : path.join(__dirname, 'assets/icon.ico'), // Windows / 其他
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

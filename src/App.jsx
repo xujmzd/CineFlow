@@ -5,8 +5,18 @@ const { electronAPI } = window;
 // 将本地文件路径转为可安全加载的 URL（直接使用 file:// 协议）
 function toLocalFileUrl(filePath) {
   if (!filePath) return '';
+  // 统一将 Windows 风格分隔符替换为 POSIX 风格
   const normalized = filePath.replace(/\\/g, '/');
-  return `file:///${normalized}`;
+  // Windows 路径如：C:/path -> file:///C:/path
+  if (/^[a-zA-Z]:\//.test(normalized)) {
+    return `file:///${normalized}`;
+  }
+  // POSIX 路径如：/Users/xxx -> file:///Users/xxx
+  if (normalized.startsWith('/')) {
+    return `file://${normalized}`;
+  }
+  // 兜底：将相对路径或其他情况也尝试转为 file:// 形式
+  return `file://${normalized}`;
 }
 
 function useAsyncData(loader, deps) {
@@ -321,7 +331,6 @@ function App() {
       }));
       setEditFile(null);
       setEditFileName('');
-      await refreshAll();
     } catch (err) {
       console.error('重命名文件失败', err);
     }
@@ -563,12 +572,12 @@ function App() {
       <header className="px-4 py-2 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
         <div className="flex items-center gap-2">
           <span className="font-semibold tracking-wide">CineFlow 媒体管理</span>
-          <span className="text-xs text-slate-500">@xujmzd Version: 0.1.0</span>
+          <span className="text-xs text-slate-500">@xujmzd Version: 1.1.0407</span>
           {settings && (
-            <span className="text-[11px] text-slate-400 ml-2">
-              项目根：{settings.projectRoot || '未设置'} | 媒体根：
-              {settings.mediaRoot || '未设置'}
-            </span>
+          <span className="text-[11px] text-slate-400 ml-2">
+            项目根：{settings.projectRoot || '未设置'} | 媒体根：
+            {settings.mediaRoot || '未设置'}
+          </span>
           )}
         </div>
         <div className="flex items-center gap-2">

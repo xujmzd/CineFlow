@@ -3,7 +3,6 @@
 基于 **Electron + React + Tailwind CSS** 的多项目媒体管理工具，用于集中管理视频、图片、音频等素材，并支持跨项目复用、拖拽导出。
 
 ---
-百度网盘链接：https://pan.baidu.com/s/1zdxRNeYKSp5u1x3PTb-ggQ?pwd=dpx7 
 
 ## 一、总体功能概览
 
@@ -306,6 +305,28 @@ npm run dev
 npm run build
 ```
 
+### 7.3 Mac 打包与兼容性
+- 说明：当前应用已支持在 macOS 上打包。确保 macOS 机器上有 Xcode 命令行工具，并已配置 Apple Developer 签名（如需签名）。
+- 构建前提：icon.icns 已放置在 assets 目录下（你已完成此步骤）。
+- 常用打包命令（在 macOS 机上执行，或在 CI 的 macOS 环境执行）：
+- 1) 安装依赖
+   ```bash
+   npm install
+   ```
+- 2) 构建 renderer 和 Electron 打包
+   ```bash
+   npm run build
+   ```
+- 3) 直接打包 macOS DMG（如果你在本地 macOS 上）
+   说明：build 脚本在当前平台打包为对应平台的应用，若在 macOS 上运行则会生成 macOS 的 DMG；若在 Windows/Linux 上运行需要在对应的 CI/虚拟机上进行 macOS 构建。
+- 4) 如需签名，请在环境变量中配置 Apple Developer ID 并使用 macOS 的签名流程。
+- 5) 常见问题：若遇到签名错误、权限问题，请确保在 macOS 的系统偏好设置中允许应用访问指定目录，或通过命令行工具进行签名。 
+- 6) 版本与图标：已统一使用 icon.icns 作为 macOS 图标，确保应用在 Dock/Launchpad 的外观一致。
+
+## VIII. 拖拽导入的冲突处理（新）
+- 新增同名文件冲突处理：在将媒体文件拖入当前项目目录时，若目标目录中已存在同名文件，将弹出覆盖确认框（使用 Electron 的对话框实现）。用户选择“覆盖”则覆盖，否则跳过该文件。
+- 逻辑实现位置：在 electron/main.js 的 importFilesToProject(copy 时) 使用 copyWithConflict 的策略进行确认，避免无意覆盖或重复导入。
+
 
 ---
 
@@ -324,5 +345,4 @@ npm run build
   - 在 `project.json` 中增加字段。
   - 在主进程封装对应的读写函数。
   - 最后通过 `electronAPI` 暴露给前端。
-
 
