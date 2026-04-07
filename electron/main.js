@@ -158,14 +158,14 @@ async function copyWithUniqueName(srcPath, destDir) {
   return target;
 }
 
-// 左侧上传：复制到当前项目目录（保留原文件名，冲突时加后缀，遇到同名时弹出覆盖确认）
+// 左侧上传：复制到当前项目目录（保留原文件名，冲突时加后缀）
 async function importFilesToProject(filePaths) {
   await ensureDirs();
   const projectDir = getProjectDir();
   if (!projectDir) return [];
   const imported = [];
   for (const src of filePaths) {
-    const target = await copyWithConflict(src, projectDir) || await copyWithUniqueName(src, projectDir);
+    const target = await copyWithUniqueName(src, projectDir);
     if (target) imported.push({ name: path.basename(target), fullPath: target });
   }
   return imported;
@@ -190,21 +190,8 @@ async function importFilesToLibrary(filePaths) {
       target = path.join(mediaRoot, candidateBase);
       try {
         await fsp.access(target);
-        // 同名文件存在，询问是否覆盖
-        const result = dialog.showMessageBoxSync(BrowserWindow.getFocusedWindow(), {
-          type: 'question',
-          buttons: ['Overwrite', 'Skip'],
-          defaultId: 0,
-          message: `媒体库中已存在同名文件 ${path.basename(target)}，是否覆盖？`,
-        });
-        if (result === 0) {
-          await fsp.copyFile(src, target);
-          break;
-        } else {
-          candidateBase = `${baseName}-${index}${ext}`;
-          index += 1;
-          continue;
-        }
+        candidateBase = `${baseName}-${index}${ext}`;
+        index += 1;
       } catch {
         await fsp.copyFile(src, target);
         break;
